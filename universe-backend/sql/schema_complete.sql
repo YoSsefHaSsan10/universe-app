@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS messages (
   channel_id   INT NOT NULL,
   sender_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   content      TEXT NOT NULL,
+  is_read      BOOLEAN DEFAULT FALSE,
   sent_at      TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_type, channel_id);
@@ -182,8 +183,9 @@ CREATE TABLE IF NOT EXISTS activity_log (
 CREATE TABLE IF NOT EXISTS notifications (
   id         SERIAL PRIMARY KEY,
   user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title      VARCHAR(200) NOT NULL,
-  body       TEXT,
+  message    TEXT NOT NULL,
+  type       VARCHAR(50) DEFAULT 'general',
+  link       TEXT,
   is_read    BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
