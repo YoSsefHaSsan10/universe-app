@@ -11,7 +11,9 @@ const app  = express();
 const PORT = process.env.PORT || 5000;
 
 // ─── SECURITY ────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false,  // App uses inline styles + Google Fonts
+}));
 
 // CORS — allow the configured CLIENT_URL plus common localhost ports for dev
 const ALLOWED_ORIGINS = new Set([
