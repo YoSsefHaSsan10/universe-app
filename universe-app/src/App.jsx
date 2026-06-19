@@ -1,4 +1,18 @@
-import { useState, useRef, useEffect, createContext, useContext, useCallback } from "react";
+import { useState, useRef, useEffect, createContext, useContext, useCallback, Component } from "react";
+
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{ padding: 40, fontFamily: "monospace", color: "#ff3860", background: "#0d0d1a", minHeight: "100vh" }}>
+        <h2>App Error (send this to dev)</h2>
+        <pre style={{ marginTop: 16, whiteSpace: "pre-wrap", fontSize: 13 }}>{this.state.error?.message}{"\n\n"}{this.state.error?.stack}</pre>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 
 const UserContext = createContext(null);
 const ToastContext = createContext(() => {});
@@ -4657,6 +4671,7 @@ export default function App() {
   };
 
   return (
+    <ErrorBoundary>
     <ToastProvider>
     <>
       <style>{getGlobalCSS(C)}</style>
@@ -4694,5 +4709,6 @@ export default function App() {
       )}
     </>
     </ToastProvider>
+    </ErrorBoundary>
   );
 }
