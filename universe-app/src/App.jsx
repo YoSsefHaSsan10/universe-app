@@ -4438,15 +4438,46 @@ function AdminAIView() {
       {/* STATUS TAB */}
       {tab === "status" && status && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px", background: C.card, border: `1px solid ${status.ollama_running?C.green:C.red}`, borderRadius: 12 }}>
-            <div style={{ width: 14, height: 14, borderRadius: "50%", background: status.ollama_running?C.green:C.red, flexShrink: 0 }} />
+          {/* Active engine banner */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px", background: C.card, border: `1px solid ${C.green}`, borderRadius: 12 }}>
+            <div style={{ width: 14, height: 14, borderRadius: "50%", background: C.green, flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{status.ollama_running ? "🟢 Ollama is Running" : "🔴 Ollama is NOT Running"}</div>
-              <div style={{ fontSize: 12, color: C.textMuted }}>{status.ollama_running ? `Chat model: ${status.chat_model} · Embed model: ${status.embed_model}` : "Install Ollama and run: ollama serve"}</div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>
+                {status.ollama_running ? "🟢 Active Engine: Ollama (Local)" : status.groq_configured ? "🟢 Active Engine: Groq Cloud AI" : "🔴 No AI Engine Configured"}
+              </div>
+              <div style={{ fontSize: 12, color: C.textMuted }}>
+                {status.ollama_running
+                  ? `Chat model: ${status.chat_model} · Embed model: ${status.embed_model}`
+                  : status.groq_configured
+                  ? `Model: ${status.chat_model} · Powered by Groq API`
+                  : "Start Ollama locally or set GROQ_API_KEY in Railway environment variables"}
+              </div>
+            </div>
+            <div style={{ padding: "4px 12px", borderRadius: 20, background: status.ollama_running ? "#064e3b" : status.groq_configured ? "#1e1b4b" : "#450a0a", color: status.ollama_running ? C.green : status.groq_configured ? C.purpleLight : C.red, fontSize: 11, fontWeight: 700 }}>
+              {status.active_engine?.toUpperCase() || "NONE"}
             </div>
           </div>
+
+          {/* Ollama + Groq sub-status */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: C.card, border: `1px solid ${status.ollama_running ? C.green : C.border}`, borderRadius: 10 }}>
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: status.ollama_running ? C.green : C.textMuted, flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: status.ollama_running ? C.green : C.textMuted }}>Ollama (Local)</div>
+                <div style={{ fontSize: 11, color: C.textMuted }}>{status.ollama_running ? "Running" : "Not running — local only"}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: C.card, border: `1px solid ${status.groq_configured ? C.purple : C.border}`, borderRadius: 10 }}>
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: status.groq_configured ? C.purple : C.textMuted, flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: status.groq_configured ? C.purpleLight : C.textMuted }}>Groq Cloud AI</div>
+                <div style={{ fontSize: 11, color: C.textMuted }}>{status.groq_configured ? `${status.chat_model}` : "No API key set"}</div>
+              </div>
+            </div>
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-            {[["📦 Downloaded Models", status.models?.length || 0, C.blue], ["🔮 Embeddings Stored", status.embeddings, C.purple], ["📚 Training Pairs", status.training_pairs, C.green]].map(([l,v,c]) => (
+            {[["📦 Active Models", status.models?.length || 0, C.blue], ["🔮 Embeddings Stored", status.embeddings, C.purple], ["📚 Training Pairs", status.training_pairs, C.green]].map(([l,v,c]) => (
               <div key={l} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 20px" }}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: c }}>{v}</div>
                 <div style={{ fontSize: 12, color: C.textMuted }}>{l}</div>
@@ -4455,7 +4486,7 @@ function AdminAIView() {
           </div>
           {status.models?.length > 0 && (
             <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Downloaded Models</div>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Active Models</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {status.models.map(m => <div key={m} style={{ padding: "4px 10px", borderRadius: 6, background: C.purpleBg, color: C.purpleLight, fontSize: 12, fontWeight: 600 }}>{m}</div>)}
               </div>
@@ -4464,6 +4495,7 @@ function AdminAIView() {
           <button onClick={reindex} disabled={!status.ollama_running || indexing} style={{ background: C.purple, color: "white", borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 600, opacity: (!status.ollama_running||indexing)?0.5:1, width: "fit-content" }}>
             {indexing ? "⏳ Indexing…" : "🔄 Re-index All Documents (RAG)"}
           </button>
+          {!status.ollama_running && <div style={{ fontSize: 12, color: C.textMuted }}>RAG re-indexing requires Ollama running locally (embeddings are not supported via Groq).</div>}
         </div>
       )}
 
