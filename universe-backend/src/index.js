@@ -48,7 +48,18 @@ app.use(express.urlencoded({ extended: true }));
 
 // ─── HEALTH CHECK ────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  const fs = require("fs");
+  const cwd = process.cwd();
+  const d1 = path.join(__dirname, "../../universe-app/dist");
+  const d2 = path.join(cwd, "universe-app/dist");
+  res.json({
+    status: "ok",
+    cwd,
+    __dirname,
+    d1_exists: fs.existsSync(d1),
+    d2_exists: fs.existsSync(d2),
+    d1, d2,
+  });
 });
 
 // ─── STATIC — uploaded course materials ──────────────────────
