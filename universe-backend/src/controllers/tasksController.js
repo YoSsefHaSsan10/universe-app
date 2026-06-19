@@ -3,6 +3,22 @@ const pool = require("../config/db");
 // GET /api/tasks
 const getTasks = async (req, res) => {
   try {
+    if (req.user.role === "student") {
+      // Return instructor-created tasks for courses the student is enrolled in
+      const { rows } = await pool.query(
+        `SELECT t.id, t.title, t.due_date, t.is_done, t.created_at,
+                c.name AS course_name, c.code AS course_code, c.color AS course_color,
+                u.full_name AS assigned_by
+         FROM tasks t
+         JOIN courses c ON c.id = t.course_id
+         JOIN course_members cm ON cm.course_id = t.course_id AND cm.user_id = $1
+         JOIN users u ON u.id = t.user_id AND u.role IN ('instructor','admin')
+         ORDER BY t.is_done ASC, t.due_date ASC NULLS LAST`,
+        [req.user.id]
+      );
+      return res.json(rows);
+    }
+    // Instructor / admin: own tasks
     const { rows } = await pool.query(
       `SELECT t.id, t.title, t.due_date, t.is_done, t.created_at,
               c.name AS course_name, c.code AS course_code, c.color AS course_color
@@ -18,9 +34,10 @@ const getTasks = async (req, res) => {
   }
 };
 
-// POST /api/tasks
+// POST /api/tasks  (instructors / admins only)
 const createTask = async (req, res) => {
   try {
+    if (req.user.role === "student") return res.status(403).json({ error: "Students cannot create tasks" });
     const { title, due_date, course_id } = req.body;
     const { rows } = await pool.query(
       "INSERT INTO tasks (user_id, title, due_date, course_id) VALUES ($1,$2,$3,$4) RETURNING *",
@@ -32,7 +49,7 @@ const createTask = async (req, res) => {
   }
 };
 
-// PATCH /api/tasks/:id/toggle
+// PATCH /api/tasks/:id/toggle  (only the task's creator can toggle)
 const toggleTask = async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -46,13 +63,11 @@ const toggleTask = async (req, res) => {
   }
 };
 
-// DELETE /api/tasks/:id
+// DELETE /api/tasks/:id  (instructors / admins only)
 const deleteTask = async (req, res) => {
   try {
-    await pool.query(
-      "DELETE FROM tasks WHERE id = $1 AND user_id = $2",
-      [req.params.id, req.user.id]
-    );
+    if (req.user.role === "student") return res.status(403).json({ error: "Students cannot delete tasks" });
+    await pool.query("DELETE FROM tasks WHERE id = $1 AND user_id = $2", [req.params.id, req.user.id]);
     res.json({ message: "Deleted" });
   } catch (err) {
     res.status(500).json({ error: "Server error" });

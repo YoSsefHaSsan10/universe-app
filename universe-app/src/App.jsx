@@ -448,25 +448,27 @@ function LoginScreen({ onLogin }) {
 
 /* ─── TASKS ────────────────────────────────────────────────────────────────────── */
 function TasksView() {
+  const user  = useContext(UserContext);
+  const isStudent = user?.role === "student";
   const toast = useToast();
-  const [tasks, setTasks] = useState([]);
+  const [tasks, setTasks]       = useState([]);
   const [newTitle, setNewTitle] = useState("");
-  const [newDue, setNewDue] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [filter, setFilter] = useState("pending");
+  const [newDue, setNewDue]     = useState("");
+  const [newCourse, setNewCourse] = useState("");
+  const [myCourses, setMyCourses] = useState([]);
+  const [adding, setAdding]     = useState(false);
+  const [filter, setFilter]     = useState("pending");
 
   useEffect(() => {
     api("/api/tasks").then(d => { if (Array.isArray(d)) setTasks(d); }).catch(() => {});
+    if (!isStudent) api("/api/courses").then(d => { if (Array.isArray(d)) setMyCourses(d); }).catch(() => {});
   }, []);
 
   const addTask = async () => {
     if (!newTitle.trim()) return;
     try {
-      const res = await api("/api/tasks", { method: "POST", body: { title: newTitle, due_date: newDue || undefined } });
-      if (res.id) {
-        setTasks(p => [res, ...p]);
-        setNewTitle(""); setNewDue(""); setAdding(false);
-      }
+      const res = await api("/api/tasks", { method: "POST", body: { title: newTitle, due_date: newDue || undefined, course_id: newCourse || undefined } });
+      if (res.id) { setTasks(p => [res, ...p]); setNewTitle(""); setNewDue(""); setNewCourse(""); setAdding(false); }
     } catch { toast("Failed to add task", "error"); }
   };
 
@@ -484,53 +486,81 @@ function TasksView() {
     } catch { toast("Failed to delete task", "error"); }
   };
 
-  const shown = tasks.filter(t => filter === "all" ? true : filter === "done" ? t.is_done : !t.is_done);
+  const shown  = tasks.filter(t => filter === "all" ? true : filter === "done" ? t.is_done : !t.is_done);
   const overdue = (t) => t.due_date && !t.is_done && new Date(t.due_date) < new Date();
 
   return (
     <div className="fade-up" style={{ padding: 20, maxWidth: 700 }}>
+      {isStudent && (
+        <div style={{ background: C.blueBg, border: `1px solid ${C.blue}33`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, fontSize: 13, color: C.textMuted, display: "flex", alignItems: "center", gap: 8 }}>
+          <Svg d="M13 16h-1v-4h-1m1-4h.01" size={15} stroke={C.blue} />
+          Tasks are assigned by your instructors. Complete them before the due date.
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 8 }}>
           {[["pending", "Pending"], ["done", "Completed"], ["all", "All"]].map(([v, l]) => (
             <button key={v} onClick={() => setFilter(v)} style={{ padding: "6px 16px", borderRadius: 8, fontSize: 13, fontWeight: filter === v ? 600 : 400, background: filter === v ? C.purpleBg : C.card, color: filter === v ? C.purpleLight : C.textMuted, border: `1px solid ${filter === v ? C.purpleLight : C.border}` }}>{l}</button>
           ))}
         </div>
-        <button onClick={() => setAdding(p => !p)} style={{ background: C.purple, color: "white", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-          <Svg d="M12 5v14M5 12h14" size={14} stroke="white" /> Add Task
-        </button>
+        {!isStudent && (
+          <button onClick={() => setAdding(p => !p)} style={{ background: C.purple, color: "white", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            <Svg d="M12 5v14M5 12h14" size={14} stroke="white" /> Assign Task
+          </button>
+        )}
       </div>
 
-      {adding && (
+      {!isStudent && adding && (
         <div style={{ background: C.card, border: `1px solid ${C.purpleLight}`, borderRadius: 10, padding: 16, marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-          <input value={newTitle} onChange={e => setNewTitle(e.target.value)} onKeyDown={e => e.key === "Enter" && addTask()} placeholder="Task title..." autoFocus style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "9px 12px", color: C.text, fontSize: 14 }} />
+          <input value={newTitle} onChange={e => setNewTitle(e.target.value)} onKeyDown={e => e.key === "Enter" && addTask()} placeholder="Task title…" autoFocus style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "9px 12px", color: C.text, fontSize: 14 }} />
+          <select value={newCourse} onChange={e => setNewCourse(e.target.value)} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 12px", color: newCourse ? C.text : C.textMuted, fontSize: 13 }}>
+            <option value="">Assign to course (optional)</option>
+            {myCourses.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+          </select>
           <div style={{ display: "flex", gap: 10 }}>
             <input type="date" value={newDue} onChange={e => setNewDue(e.target.value)} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 12px", color: C.text, fontSize: 13, flex: 1 }} />
             <button onClick={addTask} style={{ background: C.purple, color: "white", borderRadius: 7, padding: "7px 20px", fontSize: 13, fontWeight: 600 }}>Save</button>
-            <button onClick={() => { setAdding(false); setNewTitle(""); setNewDue(""); }} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 16px", fontSize: 13, color: C.textMuted }}>Cancel</button>
+            <button onClick={() => { setAdding(false); setNewTitle(""); setNewDue(""); setNewCourse(""); }} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 16px", fontSize: 13, color: C.textMuted }}>Cancel</button>
           </div>
         </div>
       )}
 
-      {shown.length === 0 && <div style={{ textAlign: "center", padding: 40, color: C.textMuted, fontSize: 13 }}>No {filter === "done" ? "completed" : filter === "pending" ? "pending" : ""} tasks.</div>}
+      {shown.length === 0 && (
+        <div style={{ textAlign: "center", padding: 40, color: C.textMuted, fontSize: 13 }}>
+          {isStudent ? "No tasks assigned by your instructors yet." : `No ${filter === "done" ? "completed" : filter === "pending" ? "pending" : ""} tasks.`}
+        </div>
+      )}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {shown.map(t => (
           <div key={t.id} style={{ background: C.card, border: `1px solid ${overdue(t) ? C.orange + "66" : C.border}`, borderRadius: 10, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-            <button onClick={() => toggle(t.id)} style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${t.is_done ? C.purple : C.borderLight}`, background: t.is_done ? C.purple : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>
-              {t.is_done && <Svg d="M20 6L9 17l-5-5" size={11} stroke="white" sw={2.5} />}
-            </button>
+            {!isStudent && (
+              <button onClick={() => toggle(t.id)} style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${t.is_done ? C.purple : C.borderLight}`, background: t.is_done ? C.purple : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>
+                {t.is_done && <Svg d="M20 6L9 17l-5-5" size={11} stroke="white" sw={2.5} />}
+              </button>
+            )}
+            {isStudent && (
+              <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${t.is_done ? C.green : C.borderLight}`, background: t.is_done ? C.greenBg : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {t.is_done && <Svg d="M20 6L9 17l-5-5" size={11} stroke={C.green} sw={2.5} />}
+              </div>
+            )}
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 500, color: t.is_done ? C.textMuted : C.text, textDecoration: t.is_done ? "line-through" : "none" }}>{t.title}</div>
-              {t.due_date && (
-                <div style={{ fontSize: 11, marginTop: 3, color: overdue(t) ? C.orange : C.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
-                  <Svg d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 6v6l4 2" size={10} stroke={overdue(t) ? C.orange : C.textMuted} />
-                  {overdue(t) ? "Overdue · " : "Due "}{new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </div>
-              )}
-              {t.course_code && <div style={{ fontSize: 11, marginTop: 2, color: C.textMuted }}>{t.course_code}</div>}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 3 }}>
+                {t.due_date && (
+                  <div style={{ fontSize: 11, color: overdue(t) ? C.orange : C.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
+                    <Svg d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 6v6l4 2" size={10} stroke={overdue(t) ? C.orange : C.textMuted} />
+                    {overdue(t) ? "Overdue · " : "Due "}{new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </div>
+                )}
+                {t.course_code && <div style={{ fontSize: 11, color: C.textMuted }}>{t.course_code}</div>}
+                {isStudent && t.assigned_by && <div style={{ fontSize: 11, color: C.textMuted }}>by {t.assigned_by}</div>}
+              </div>
             </div>
-            <button onClick={() => remove(t.id)} style={{ color: C.textMuted, padding: 6, borderRadius: 6, opacity: 0.6 }} onMouseEnter={e => e.currentTarget.style.color = C.red} onMouseLeave={e => e.currentTarget.style.color = C.textMuted}>
-              <Svg d={["M3 6h18", "M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"]} size={15} />
-            </button>
+            {!isStudent && (
+              <button onClick={() => remove(t.id)} style={{ color: C.textMuted, padding: 6, borderRadius: 6, opacity: 0.6 }} onMouseEnter={e => e.currentTarget.style.color = C.red} onMouseLeave={e => e.currentTarget.style.color = C.textMuted}>
+                <Svg d={["M3 6h18", "M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"]} size={15} />
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -669,6 +699,8 @@ function HomeDashboard({ onNav }) {
 const EVENT_TYPE_COLOR = { lecture: C.blue, meeting: C.purple, exam: C.red, deadline: C.orange, club_event: C.green, office_hours: C.cyan };
 
 function CalendarView({ triggerCreate = 0 }) {
+  const user = useContext(UserContext);
+  const canEdit = user?.role === "instructor" || user?.role === "admin";
   const toast = useToast();
   const [view, setView] = useState("week");
   const [weekStart, setWeekStart] = useState(() => {
@@ -701,6 +733,8 @@ function CalendarView({ triggerCreate = 0 }) {
   }, [weekStart]);
 
   useEffect(() => { if (triggerCreate > 0) setCreating(true); }, [triggerCreate]);
+
+  useEffect(() => { if (triggerCreate > 0 && canEdit) setCreating(true); }, [triggerCreate]);
 
   const createEvent = async () => {
     if (!evTitle.trim() || !evDate) { toast("Title and date are required", "error"); return; }
@@ -790,7 +824,10 @@ function CalendarView({ triggerCreate = 0 }) {
           <button onClick={prevWeek} style={{ color: C.textMuted, padding: 4, borderRadius: 6, border: `1px solid ${C.border}` }}><Svg d="M15 18l-6-6 6-6" size={16} /></button>
           <span style={{ fontWeight: 600, fontSize: 14 }}>{fmtRange()}</span>
           <button onClick={nextWeek} style={{ color: C.textMuted, padding: 4, borderRadius: 6, border: `1px solid ${C.border}` }}><Svg d="M9 18l6-6-6-6" size={16} /></button>
-          <button onClick={goToday} style={{ marginLeft: "auto", padding: "5px 14px", borderRadius: 7, border: `1px solid ${C.border}`, color: C.text, fontSize: 12, fontWeight: 500 }}>Today</button>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+            <button onClick={goToday} style={{ padding: "5px 14px", borderRadius: 7, border: `1px solid ${C.border}`, color: C.text, fontSize: 12, fontWeight: 500 }}>Today</button>
+            {canEdit && <button onClick={() => setCreating(true)} style={{ background: C.purple, color: "white", borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><Svg d="M12 5v14M5 12h14" size={12} stroke="white" />Add Event</button>}
+          </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "64px repeat(7,1fr)", borderBottom: `1px solid ${C.border}` }}>
           <div />
@@ -3754,76 +3791,110 @@ function GoalsView() {
 
 /* ─── GRADE TRACKER ───────────────────────────────────────────────────────────── */
 function GradeTrackerView() {
-  const toast = useToast();
-  const [summary, setSummary] = useState([]);
-  const [grades, setGrades] = useState([]);
-  const [courses, setCourses] = useState([]);
+  const user      = useContext(UserContext);
+  const isStudent = user?.role === "student";
+  const toast     = useToast();
+  const [summary, setSummary]   = useState([]);
+  const [grades, setGrades]     = useState([]);
+  const [courses, setCourses]   = useState([]);
   const [selCourse, setSelCourse] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ item_name: "", item_type: "assignment", score: "", max_score: "100", weight: "1" });
+  const [students, setStudents] = useState([]);
+  const [adding, setAdding]     = useState(false);
+  const [form, setForm]         = useState({ item_name: "", item_type: "assignment", score: "", max_score: "100", weight: "1", student_id: "" });
 
   const load = async () => {
     const [g, c] = await Promise.all([api("/api/academic/grades"), api("/api/courses")]);
-    if (g && !g.error) { setGrades(g.grades||[]); setSummary(g.summary||[]); }
+    if (g && !g.error) { setGrades(g.grades || []); setSummary(g.summary || []); }
     if (Array.isArray(c)) setCourses(c);
   };
   useEffect(() => { load(); }, []);
 
+  // When instructor selects a course, load its students
+  useEffect(() => {
+    if (!isStudent && selCourse) {
+      api(`/api/courses/${selCourse}/members`)
+        .then(d => setStudents(Array.isArray(d) ? d.filter(m => m.role === "student") : []))
+        .catch(() => {});
+    }
+  }, [selCourse]);
+
   const save = async () => {
     if (!selCourse || !form.item_name || form.score === "") { toast("Fill all required fields", "error"); return; }
+    if (!isStudent && !form.student_id) { toast("Select a student", "error"); return; }
     const r = await api("/api/academic/grades", { method: "POST", body: { ...form, course_id: selCourse, score: parseFloat(form.score), max_score: parseFloat(form.max_score), weight: parseFloat(form.weight) } });
     if (r.error) { toast(r.error, "error"); return; }
-    toast("Grade added!", "success"); setAdding(false); setForm({ item_name:"", item_type:"assignment", score:"", max_score:"100", weight:"1" }); load();
+    toast("Grade saved!", "success");
+    setAdding(false);
+    setForm({ item_name: "", item_type: "assignment", score: "", max_score: "100", weight: "1", student_id: "" });
+    load();
   };
 
   const letterGrade = (pct) => {
-    if (pct >= 93) return ["A", C.green]; if (pct >= 90) return ["A-", C.green];
-    if (pct >= 87) return ["B+", C.blue]; if (pct >= 83) return ["B", C.blue]; if (pct >= 80) return ["B-", C.blue];
-    if (pct >= 77) return ["C+", C.yellow]; if (pct >= 73) return ["C", C.yellow]; if (pct >= 70) return ["C-", C.yellow];
+    if (pct >= 93) return ["A",  C.green];  if (pct >= 90) return ["A-", C.green];
+    if (pct >= 87) return ["B+", C.blue];   if (pct >= 83) return ["B",  C.blue];  if (pct >= 80) return ["B-", C.blue];
+    if (pct >= 77) return ["C+", C.yellow]; if (pct >= 73) return ["C",  C.yellow]; if (pct >= 70) return ["C-", C.yellow];
     return ["D/F", C.red];
   };
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
-        {summary.map(c => {
-          const pct = parseFloat(c.percentage);
-          const [letter, col] = isNaN(pct) ? ["—", C.textMuted] : letterGrade(pct);
-          return (
-            <div key={c.code} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                <div><div style={{ fontWeight: 700, fontSize: 13 }}>{c.name}</div><div style={{ fontSize: 11, color: C.textMuted }}>{c.code}</div></div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: col }}>{letter}</div>
+      {/* Summary cards */}
+      {summary.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
+          {summary.map(c => {
+            const pct = parseFloat(c.percentage);
+            const [letter, col] = isNaN(pct) ? ["—", C.textMuted] : letterGrade(pct);
+            return (
+              <div key={c.code} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                  <div><div style={{ fontWeight: 700, fontSize: 13 }}>{c.name}</div><div style={{ fontSize: 11, color: C.textMuted }}>{c.code}</div></div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: col }}>{letter}</div>
+                </div>
+                <div style={{ background: C.bg, borderRadius: 6, height: 6, marginBottom: 4 }}>
+                  <div style={{ background: col, borderRadius: 6, height: 6, width: `${Math.min(100, pct || 0)}%`, transition: "width 0.5s" }} />
+                </div>
+                <div style={{ fontSize: 11, color: C.textMuted }}>{isNaN(pct) ? "No grades yet" : `${pct}% · ${c.items.length} item(s)`}</div>
               </div>
-              <div style={{ background: C.bg, borderRadius: 6, height: 6, marginBottom: 4 }}>
-                <div style={{ background: col, borderRadius: 6, height: 6, width: `${Math.min(100, pct||0)}%`, transition: "width 0.5s" }} />
-              </div>
-              <div style={{ fontSize: 11, color: C.textMuted }}>{isNaN(pct)?"No grades yet":`${pct}% · ${c.items.length} item(s)`}</div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
+      {/* Header row */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontWeight: 700, fontSize: 15 }}>📝 Grade Log</div>
-        <button onClick={() => setAdding(true)} style={{ background: C.purple, color: "white", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
-          <Svg d={["M12 5v14","M5 12h14"]} size={12} stroke="white" sw={2} /> Add Grade
-        </button>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>{isStudent ? "My Grades" : "Student Grades"}</div>
+        {!isStudent && (
+          <button onClick={() => setAdding(true)} style={{ background: C.purple, color: "white", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+            <Svg d={["M12 5v14","M5 12h14"]} size={12} stroke="white" sw={2} /> Add Grade
+          </button>
+        )}
       </div>
 
-      {adding && (
+      {/* Instructor add-grade form */}
+      {!isStudent && adding && (
         <div style={{ background: C.card, border: `1px solid ${C.purple}44`, borderRadius: 12, padding: 16, marginBottom: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-            <select value={selCourse} onChange={e=>setSelCourse(e.target.value)} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }}>
+            <select value={selCourse} onChange={e => { setSelCourse(e.target.value); setForm(f => ({ ...f, student_id: "" })); }}
+              style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }}>
               <option value="">Select course *</option>
-              {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {courses.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
             </select>
-            <select value={form.item_type} onChange={e=>setForm(f=>({...f, item_type: e.target.value}))} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }}>
-              {["assignment","quiz","midterm","final","project","lab"].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+            <select value={form.student_id} onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))}
+              disabled={!selCourse || students.length === 0}
+              style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13, opacity: selCourse ? 1 : 0.5 }}>
+              <option value="">Select student *</option>
+              {students.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
             </select>
-            <input value={form.item_name} onChange={e=>setForm(f=>({...f, item_name: e.target.value}))} placeholder="Item name *" style={{ gridColumn: "1/-1", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }} />
+            <select value={form.item_type} onChange={e => setForm(f => ({ ...f, item_type: e.target.value }))}
+              style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }}>
+              {["assignment","quiz","midterm","final","project","lab"].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+            </select>
+            <input value={form.item_name} onChange={e => setForm(f => ({ ...f, item_name: e.target.value }))} placeholder="Item name *"
+              style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }} />
             {["score","max_score","weight"].map(k => (
-              <input key={k} type="number" value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))} placeholder={k==="score"?"Score *":k==="max_score"?"Max score":"Weight"} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }} />
+              <input key={k} type="number" value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                placeholder={k === "score" ? "Score *" : k === "max_score" ? "Max score" : "Weight"}
+                style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }} />
             ))}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -3833,6 +3904,7 @@ function GradeTrackerView() {
         </div>
       )}
 
+      {/* Grade list */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {grades.map(g => {
           const pct = parseFloat(g.score) / parseFloat(g.max_score) * 100;
@@ -3842,17 +3914,29 @@ function GradeTrackerView() {
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: g.course_color, flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: 13 }}>{g.item_name}</div>
-                <div style={{ fontSize: 11, color: C.textMuted }}>{g.course_name} · {g.item_type}</div>
+                <div style={{ fontSize: 11, color: C.textMuted }}>
+                  {g.course_name} · {g.item_type}
+                  {!isStudent && g.student_name && <> · <span style={{ color: C.purpleLight }}>{g.student_name}</span></>}
+                </div>
               </div>
               <div style={{ fontWeight: 700, fontSize: 14, color: col }}>{letter}</div>
               <div style={{ fontSize: 13, color: C.textMuted }}>{g.score}/{g.max_score}</div>
-              <button onClick={() => api(`/api/academic/grades/${g.id}`,{method:"DELETE"}).then(load)} style={{ color: C.textDim, padding: 4 }} onMouseEnter={e=>e.currentTarget.style.color=C.red} onMouseLeave={e=>e.currentTarget.style.color=C.textDim}>
-                <Svg d={["M3 6h18","M8 6V4h8v2","M19 6l-1 14H6L5 6"]} size={13} stroke="currentColor" />
-              </button>
+              {!isStudent && (
+                <button onClick={() => api(`/api/academic/grades/${g.id}`, { method: "DELETE" }).then(load)}
+                  style={{ color: C.textDim, padding: 4 }}
+                  onMouseEnter={e => e.currentTarget.style.color = C.red}
+                  onMouseLeave={e => e.currentTarget.style.color = C.textDim}>
+                  <Svg d={["M3 6h18","M8 6V4h8v2","M19 6l-1 14H6L5 6"]} size={13} stroke="currentColor" />
+                </button>
+              )}
             </div>
           );
         })}
-        {grades.length === 0 && !adding && <div style={{ textAlign: "center", padding: 28, color: C.textMuted, fontSize: 13 }}>No grades yet. Click "Add Grade" to start tracking!</div>}
+        {grades.length === 0 && !adding && (
+          <div style={{ textAlign: "center", padding: 28, color: C.textMuted, fontSize: 13 }}>
+            {isStudent ? "No grades have been entered for you yet." : "No grades yet. Click \"Add Grade\" to enter student grades."}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4192,7 +4276,7 @@ export default function App() {
       "clubs-browse":        ["Discover Clubs", "Find your community — join clubs and connect with peers", null],
       "instructor-courses":       ["Course Management", "Create and manage your courses, view enrolled students", <HeaderActionBtn key="cc" label="Create Course" onAction={() => setInstrCourseTrigger(t => t + 1)} />],
       "instructor-announcements": ["Announcements", "Post, pin and manage announcements for your students", <HeaderActionBtn key="pa2" label="Post Announcement" onAction={() => setAnnounceTrigger(t => t + 1)} />],
-      calendar: ["Calendar", "Manage your lectures, meetings, and events", <HeaderActionBtn key="ae" label="Add Event" onAction={() => setCalendarTrigger(t => t + 1)} />],
+      calendar: ["Calendar", role === "student" ? "View your scheduled lectures, exams, and course events" : "Manage your lectures, meetings, and events", role !== "student" ? <HeaderActionBtn key="ae" label="Add Event" onAction={() => setCalendarTrigger(t => t + 1)} /> : null],
       badges: ["Your Badges & Achievements", "Track your progress and unlock new achievements", null],
       findteam: ["Team Hub", "Find study partners and create teams based on skills and badges", <HeaderActionBtn key="ct" label="Create Team" onAction={() => setTeamTrigger(t => t + 1)} />],
       announcements: ["University Announcements", "Stay updated with the latest news and information from your university", null],
@@ -4200,7 +4284,8 @@ export default function App() {
       leaderboard:       ["🏆 Leaderboard", "Top students ranked by XP", null],
       pomodoro:          ["⏱️ Focus Timer", "Stay productive with Pomodoro technique", null],
       goals:             ["🎯 Semester Goals", "Set goals, track progress, earn XP", null],
-      grades:            ["📝 Grade Tracker", "Log your grades and calculate your GPA", null],
+      grades:            ["📝 Grade Tracker", role === "student" ? "View your grades entered by instructors" : "Enter and manage student grades for your courses", null],
+      tasks:             ["Tasks", role === "student" ? "View tasks and assignments from your instructors" : "Assign tasks and deadlines to your course students", null],
       "admin-analytics": ["📊 Analytics", "Platform statistics, charts, and system announcements", null],
       "admin-ai":        ["🤖 AI Model Manager", "Configure UniVerse AI, manage training data, and index documents", null],
       ai:                ["AI Study Assistant", "Get help with homework, study plans, and course questions", null],

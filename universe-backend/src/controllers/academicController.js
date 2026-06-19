@@ -6,33 +6,55 @@ const multer = require("multer");
 /* ═══════════════════════════════════════════════════════════════
    GRADES
 ═══════════════════════════════════════════════════════════════ */
+const buildSummary = (rows) => {
+  const byC = {};
+  for (const r of rows) {
+    if (!byC[r.course_id]) byC[r.course_id] = { name: r.course_name, code: r.course_code, color: r.course_color, items: [] };
+    byC[r.course_id].items.push(r);
+  }
+  return Object.values(byC).map(c => {
+    const total    = c.items.reduce((s, i) => s + parseFloat(i.weight), 0);
+    const weighted = c.items.reduce((s, i) => s + (parseFloat(i.score) / parseFloat(i.max_score)) * parseFloat(i.weight), 0);
+    return { ...c, percentage: total > 0 ? (weighted / total * 100).toFixed(1) : null };
+  });
+};
+
 const getGrades = async (req, res) => {
   try {
     const { course_id } = req.query;
+
+    if (req.user.role === "instructor" || req.user.role === "admin") {
+      // Instructors see all student grades for their courses
+      const params = [req.user.id];
+      let courseFilter = "";
+      if (course_id) { params.push(course_id); courseFilter = `AND g.course_id=$${params.length}`; }
+
+      const { rows } = await pool.query(`
+        SELECT g.*, c.name AS course_name, c.code AS course_code, c.color AS course_color,
+               u.full_name AS student_name, u.email AS student_email
+        FROM grades g
+        JOIN courses c ON c.id = g.course_id
+        JOIN users   u ON u.id = g.user_id
+        WHERE EXISTS (
+          SELECT 1 FROM course_members cm
+          WHERE cm.course_id = g.course_id AND cm.user_id = $1 AND cm.role = 'instructor'
+        ) ${courseFilter}
+        ORDER BY c.name, u.full_name, g.created_at DESC
+      `, params);
+      return res.json({ grades: rows, summary: buildSummary(rows) });
+    }
+
+    // Students see only their own grades
     const params = [req.user.id];
     let where = "WHERE g.user_id=$1";
     if (course_id) { params.push(course_id); where += ` AND g.course_id=$${params.length}`; }
-
     const { rows } = await pool.query(`
       SELECT g.*, c.name AS course_name, c.code AS course_code, c.color AS course_color
       FROM grades g JOIN courses c ON c.id = g.course_id
       ${where}
       ORDER BY g.created_at DESC
     `, params);
-
-    // Calculate GPA per course
-    const byC = {};
-    for (const r of rows) {
-      if (!byC[r.course_id]) byC[r.course_id] = { name: r.course_name, code: r.course_code, color: r.course_color, items: [] };
-      byC[r.course_id].items.push(r);
-    }
-    const summary = Object.values(byC).map(c => {
-      const total = c.items.reduce((s, i) => s + parseFloat(i.weight), 0);
-      const weighted = c.items.reduce((s, i) => s + (parseFloat(i.score) / parseFloat(i.max_score)) * parseFloat(i.weight), 0);
-      const pct = total > 0 ? (weighted / total * 100).toFixed(1) : null;
-      return { ...c, percentage: pct };
-    });
-    res.json({ grades: rows, summary });
+    res.json({ grades: rows, summary: buildSummary(rows) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
@@ -41,11 +63,25 @@ const getGrades = async (req, res) => {
 
 const addGrade = async (req, res) => {
   try {
-    const { course_id, item_name, item_type, score, max_score, weight } = req.body;
+    const { course_id, item_name, item_type, score, max_score, weight, student_id } = req.body;
     if (!course_id || !item_name || score == null) return res.status(400).json({ error: "course_id, item_name, score required" });
+
+    // Instructors must teach the course; they can specify which student gets the grade
+    if (req.user.role === "instructor") {
+      const { rows: check } = await pool.query(
+        "SELECT 1 FROM course_members WHERE course_id=$1 AND user_id=$2 AND role='instructor'",
+        [course_id, req.user.id]
+      );
+      if (!check.length) return res.status(403).json({ error: "You don't teach this course" });
+    }
+
+    const targetId = (req.user.role === "instructor" || req.user.role === "admin") && student_id
+      ? student_id
+      : req.user.id;
+
     const { rows } = await pool.query(
       "INSERT INTO grades (user_id, course_id, item_name, item_type, score, max_score, weight) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
-      [req.user.id, course_id, item_name, item_type || "assignment", score, max_score || 100, weight || 1]
+      [targetId, course_id, item_name, item_type || "assignment", score, max_score || 100, weight || 1]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -55,7 +91,17 @@ const addGrade = async (req, res) => {
 
 const deleteGrade = async (req, res) => {
   try {
-    await pool.query("DELETE FROM grades WHERE id=$1 AND user_id=$2", [req.params.id, req.user.id]);
+    if (req.user.role === "instructor" || req.user.role === "admin") {
+      // Instructors can delete grades in courses they teach
+      await pool.query(
+        `DELETE FROM grades WHERE id=$1 AND EXISTS (
+          SELECT 1 FROM course_members WHERE course_id=grades.course_id AND user_id=$2 AND role='instructor'
+        )`,
+        [req.params.id, req.user.id]
+      );
+    } else {
+      await pool.query("DELETE FROM grades WHERE id=$1 AND user_id=$2", [req.params.id, req.user.id]);
+    }
     res.json({ message: "Deleted" });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
