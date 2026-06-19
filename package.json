@@ -1,0 +1,12 @@
+{
+  "name": "universe-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "cd universe-app && npm install && npm run build && cd ../universe-backend && npm install",
+    "start": "node universe-backend/src/index.js"
+  }
+}
