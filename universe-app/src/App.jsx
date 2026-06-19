@@ -2945,17 +2945,52 @@ function CourseHeaderBtn({ label, icon, onClick, msg }) {
 }
 
 function CoursePanelOverlay({ courseId, courseName, panel, onClose }) {
-  const [members, setMembers] = useState([]);
+  const user      = useContext(UserContext);
+  const canEdit   = user?.role === "instructor" || user?.role === "admin";
+  const toast     = useToast();
+  const [members,   setMembers]   = useState([]);
   const [materials, setMaterials] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [officeHrs, setOfficeHrs] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  // office-hours create form
+  const [addingOH,    setAddingOH]    = useState(false);
+  const [ohDate,      setOhDate]      = useState("");
+  const [ohTime,      setOhTime]      = useState("14:00");
+  const [ohDuration,  setOhDuration]  = useState(60);
+  const [ohLocation,  setOhLocation]  = useState("");
+  const [ohSaving,    setOhSaving]    = useState(false);
+
+  const loadOH = () =>
+    api(`/api/events?course_id=${courseId}&type=office_hours`)
+      .then(d => { if (Array.isArray(d)) setOfficeHrs(d.sort((a,b) => new Date(a.start_time)-new Date(b.start_time))); })
+      .catch(() => {});
+
   useEffect(() => {
     setLoading(true);
     if (panel === "members") {
       api(`/api/courses/${courseId}/members`).then(d => { if (Array.isArray(d)) setMembers(d); setLoading(false); }).catch(() => setLoading(false));
-    } else {
+    } else if (panel === "materials") {
       api(`/api/courses/${courseId}/materials`).then(d => { if (Array.isArray(d)) setMaterials(d); setLoading(false); }).catch(() => setLoading(false));
+    } else {
+      loadOH().finally(() => setLoading(false));
     }
   }, [courseId, panel]);
+
+  const createOH = async () => {
+    if (!ohDate) { toast("Please pick a date", "error"); return; }
+    setOhSaving(true);
+    try {
+      const start = new Date(`${ohDate}T${ohTime}:00`);
+      const end   = new Date(start.getTime() + ohDuration * 60000);
+      const title = `Office Hours — ${courseName}${ohLocation ? " · " + ohLocation : ""}`;
+      const r = await api("/api/events", { method: "POST", body: { title, type: "office_hours", start_time: start.toISOString(), end_time: end.toISOString(), course_id: courseId } });
+      if (r.error) { toast(r.error, "error"); } else { toast("Office hours added!", "success"); setAddingOH(false); setOhDate(""); setOhLocation(""); await loadOH(); }
+    } catch { toast("Failed to create", "error"); }
+    setOhSaving(false);
+  };
+
+  const PANEL_TITLES = { members: "Course Members", materials: "Course Materials", office_hours: "Office Hours" };
+
   const MatIcon = ({ type }) => {
     const isPdf = type === "pdf";
     return (
@@ -2964,53 +2999,161 @@ function CoursePanelOverlay({ courseId, courseName, panel, onClose }) {
       </div>
     );
   };
+
+  const now = new Date();
+  const upcoming = officeHrs.filter(e => new Date(e.start_time) >= now);
+  const past     = officeHrs.filter(e => new Date(e.start_time) <  now);
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="fade-up" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 28, width: "100%", maxWidth: 520, maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
+      <div className="fade-up" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 28, width: "100%", maxWidth: 520, maxHeight: "82vh", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>{panel === "members" ? "Course Members" : "Course Materials"}</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{PANEL_TITLES[panel]}</div>
             <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{courseName}</div>
           </div>
-          <button onClick={onClose} style={{ color: C.textMuted, padding: 4 }}><Svg d={["M18 6L6 18","M6 6l12 12"]} size={18} /></button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {panel === "office_hours" && canEdit && (
+              <button onClick={() => setAddingOH(p => !p)}
+                style={{ background: C.purple, color: "white", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+                <Svg d="M12 5v14M5 12h14" size={12} stroke="white" /> Add Slot
+              </button>
+            )}
+            <button onClick={onClose} style={{ color: C.textMuted, padding: 4 }}><Svg d={["M18 6L6 18","M6 6l12 12"]} size={18} /></button>
+          </div>
         </div>
+
+        {/* Office hours add form */}
+        {panel === "office_hours" && addingOH && (
+          <div style={{ background: C.bg, border: `1px solid ${C.purple}44`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+              <div>
+                <label style={{ fontSize: 11, color: C.textMuted, display: "block", marginBottom: 4 }}>Date *</label>
+                <input type="date" value={ohDate} onChange={e => setOhDate(e.target.value)}
+                  style={{ width: "100%", background: C.card, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: C.textMuted, display: "block", marginBottom: 4 }}>Time</label>
+                <input type="time" value={ohTime} onChange={e => setOhTime(e.target.value)}
+                  style={{ width: "100%", background: C.card, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: C.textMuted, display: "block", marginBottom: 4 }}>Duration</label>
+                <select value={ohDuration} onChange={e => setOhDuration(+e.target.value)}
+                  style={{ width: "100%", background: C.card, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }}>
+                  {[30,60,90,120].map(d => <option key={d} value={d}>{d} min</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: C.textMuted, display: "block", marginBottom: 4 }}>Location (optional)</label>
+                <input value={ohLocation} onChange={e => setOhLocation(e.target.value)} placeholder="e.g. Room B204"
+                  style={{ width: "100%", background: C.card, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={createOH} disabled={ohSaving}
+                style={{ background: C.purple, color: "white", borderRadius: 7, padding: "7px 18px", fontSize: 13, fontWeight: 600, opacity: ohSaving ? 0.7 : 1 }}>
+                {ohSaving ? "Saving…" : "Save"}
+              </button>
+              <button onClick={() => setAddingOH(false)} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 14px", fontSize: 13, color: C.textMuted }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
         <div style={{ overflowY: "auto", flex: 1 }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: 40, color: C.textMuted, fontSize: 13 }}>Loading…</div>
           ) : panel === "members" ? (
-            members.length === 0 ? <div style={{ textAlign: "center", padding: 40, color: C.textMuted, fontSize: 13 }}>No members yet.</div>
-            : members.map(m => (
-              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
-                <InitialsAvatar name={m.full_name} size={36} bg={m.avatar_color || getColor(m.full_name)} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{m.full_name}</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{m.email}</div>
+            members.length === 0
+              ? <div style={{ textAlign: "center", padding: 40, color: C.textMuted, fontSize: 13 }}>No members yet.</div>
+              : members.map(m => (
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <InitialsAvatar name={m.full_name} size={36} bg={m.avatar_color || getColor(m.full_name)} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{m.full_name}</div>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{m.email}</div>
+                  </div>
+                  <span style={{ fontSize: 11, padding: "2px 9px", borderRadius: 20, background: m.role === "instructor" ? C.purpleBg : C.blueBg, color: m.role === "instructor" ? C.purpleLight : C.blue, fontWeight: 600, textTransform: "capitalize" }}>{m.role}</span>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: m.is_online ? C.green : C.textDim, flexShrink: 0 }} />
                 </div>
-                <span style={{ fontSize: 11, padding: "2px 9px", borderRadius: 20, background: m.role === "instructor" ? C.purpleBg : C.blueBg, color: m.role === "instructor" ? C.purpleLight : C.blue, fontWeight: 600, textTransform: "capitalize" }}>{m.role}</span>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: m.is_online ? C.green : C.textDim, flexShrink: 0 }} />
-              </div>
-            ))
-          ) : (
-            materials.length === 0 ? <div style={{ textAlign: "center", padding: 40, color: C.textMuted, fontSize: 13 }}>No materials uploaded yet.</div>
-            : materials.map(m => (
-              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
-                <MatIcon type={m.type} />
-                <div style={{ flex: 1, minWidth: 0 }}>
+              ))
+          ) : panel === "materials" ? (
+            materials.length === 0
+              ? <div style={{ textAlign: "center", padding: 40, color: C.textMuted, fontSize: 13 }}>No materials uploaded yet.</div>
+              : materials.map(m => (
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <MatIcon type={m.type} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <a href={m.url?.startsWith("/uploads") ? `${window.location.origin}${m.url}` : m.url} target="_blank" rel="noreferrer"
+                      style={{ fontSize: 13, fontWeight: 600, color: C.text, textDecoration: "none" }}
+                      onMouseEnter={e => e.target.style.color = C.purple} onMouseLeave={e => e.target.style.color = C.text}>
+                      {m.title}
+                    </a>
+                    {m.description && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{m.description}</div>}
+                    <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>{new Date(m.created_at).toLocaleDateString()}</div>
+                  </div>
                   <a href={m.url?.startsWith("/uploads") ? `${window.location.origin}${m.url}` : m.url} target="_blank" rel="noreferrer"
-                    style={{ fontSize: 13, fontWeight: 600, color: C.text, textDecoration: "none" }}
-                    onMouseEnter={e => e.target.style.color = C.purple} onMouseLeave={e => e.target.style.color = C.text}>
-                    {m.title}
+                    style={{ padding: 6, color: C.textMuted, display: "flex", alignItems: "center", textDecoration: "none" }}>
+                    <Svg d={["M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6","M15 3h6v6","M10 14L21 3"]} size={14} />
                   </a>
-                  {m.description && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{m.description}</div>}
-                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>{new Date(m.created_at).toLocaleDateString()}</div>
                 </div>
-                <a href={m.url?.startsWith("/uploads") ? `${window.location.origin}${m.url}` : m.url} target="_blank" rel="noreferrer"
-                  style={{ padding: 6, color: C.textMuted, display: "flex", alignItems: "center", textDecoration: "none" }}>
-                  <Svg d={["M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6","M15 3h6v6","M10 14L21 3"]} size={14} />
-                </a>
+              ))
+          ) : (
+            /* Office Hours panel */
+            officeHrs.length === 0 && !addingOH ? (
+              <div style={{ textAlign: "center", padding: 40, color: C.textMuted, fontSize: 13 }}>
+                {canEdit ? "No office hours scheduled yet. Click \"Add Slot\" to add one." : "No office hours scheduled yet."}
               </div>
-            ))
+            ) : (
+              <>
+                {upcoming.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Upcoming</div>
+                    {upcoming.map(ev => {
+                      const start = new Date(ev.start_time);
+                      const end   = ev.end_time ? new Date(ev.end_time) : null;
+                      const fmt   = d => d.toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+                      return (
+                        <div key={ev.id} style={{ display: "flex", gap: 14, padding: "12px 0", borderBottom: `1px solid ${C.border}`, alignItems: "flex-start" }}>
+                          <div style={{ width: 46, height: 46, borderRadius: 10, background: C.cyanBg || C.purpleBg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <div style={{ fontSize: 10, color: C.cyan || C.purpleLight, fontWeight: 700, textTransform: "uppercase" }}>{start.toLocaleString("en-US",{month:"short"})}</div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: C.cyan || C.purpleLight, lineHeight: 1 }}>{start.getDate()}</div>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: C.text }}>{fmt(start)}</div>
+                            {end && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Until {end.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})} ({Math.round((end-start)/60000)} min)</div>}
+                            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>by {ev.created_by_name}</div>
+                          </div>
+                          <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 20, background: C.greenBg, color: C.green, fontWeight: 700 }}>OPEN</span>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+                {past.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginTop: 16, marginBottom: 8 }}>Past</div>
+                    {past.slice(-5).reverse().map(ev => {
+                      const start = new Date(ev.start_time);
+                      return (
+                        <div key={ev.id} style={{ display: "flex", gap: 14, padding: "10px 0", borderBottom: `1px solid ${C.border}`, alignItems: "center", opacity: 0.55 }}>
+                          <div style={{ width: 46, height: 46, borderRadius: 10, background: C.white10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 700, textTransform: "uppercase" }}>{start.toLocaleString("en-US",{month:"short"})}</div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: C.textMuted, lineHeight: 1 }}>{start.getDate()}</div>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, color: C.textMuted }}>{start.toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+                            <div style={{ fontSize: 11, color: C.textDim }}>by {ev.created_by_name}</div>
+                          </div>
+                          <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 20, background: C.white10, color: C.textDim, fontWeight: 700 }}>ENDED</span>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </>
+            )
           )}
         </div>
       </div>
@@ -4303,7 +4446,7 @@ export default function App() {
         headerRight={[
           <CourseHeaderBtn key="ma" label="Members" icon="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" onClick={() => setShowCoursePanel("members")} />,
           <CourseHeaderBtn key="mt" label="Materials" icon={["M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2", "M9 5a2 2 0 002 2h2a2 2 0 002-2", "M9 5a2 2 0 012-2h2a2 2 0 012 2"]} onClick={() => setShowCoursePanel("materials")} />,
-          <CourseHeaderBtn key="oh" label="Office Hours" icon="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 6v6l4 2" msg="Office hours coming soon" />,
+          <CourseHeaderBtn key="oh" label="Office Hours" icon="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 6v6l4 2" onClick={() => setShowCoursePanel("office_hours")} />,
           <button key="d" onClick={() => handleNav("announcements")} style={{ fontSize: 11, padding: "5px 12px", borderRadius: 6, border: `1px solid ${C.border}`, color: C.textMuted, display: "flex", alignItems: "center", gap: 4 }}><Svg d={["M22 17H2a3 3 0 000 6h1", "M18 9a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9", "M13.73 21a2 2 0 01-3.46 0"]} size={11} stroke={C.textMuted} /> Announcements</button>,
         ]} />
     );

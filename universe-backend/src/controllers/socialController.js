@@ -57,7 +57,7 @@ const getUserProfile = async (req, res) => {
              (SELECT COUNT(*) FROM course_members WHERE user_id=u.id) AS course_count,
              (SELECT COUNT(*) FROM club_members WHERE user_id=u.id AND status='approved') AS club_count,
              (SELECT COUNT(*) FROM user_badges WHERE user_id=u.id) AS badge_count,
-             (SELECT COUNT(*) FROM tasks WHERE user_id=u.id AND completed=TRUE) AS tasks_done
+             (SELECT COUNT(*) FROM tasks WHERE user_id=u.id AND is_done=TRUE) AS tasks_done
       FROM users u
       LEFT JOIN user_xp x ON x.user_id = u.id
       WHERE u.id = $1

@@ -1,20 +1,9 @@
 const pool = require("../config/db");
 
-// GET /api/events?from=2026-03-01&to=2026-03-31&type=lecture
+// GET /api/events?from=...&to=...&type=...&course_id=...
 const getEvents = async (req, res) => {
   try {
-    const { from, to, type } = req.query;
-
-    // Get user's course ids and club ids
-    const courseIds = await pool.query(
-      "SELECT course_id FROM course_members WHERE user_id = $1", [req.user.id]
-    );
-    const clubIds = await pool.query(
-      "SELECT club_id FROM club_members WHERE user_id = $1", [req.user.id]
-    );
-
-    const cIds = courseIds.rows.map(r => r.course_id);
-    const clIds = clubIds.rows.map(r => r.club_id);
+    const { from, to, type, course_id } = req.query;
 
     let query = `
       SELECT e.id, e.title, e.description, e.type, e.start_time, e.end_time,
@@ -25,16 +14,32 @@ const getEvents = async (req, res) => {
       LEFT JOIN courses c ON c.id = e.course_id
       LEFT JOIN clubs cl ON cl.id = e.club_id
       LEFT JOIN users u ON u.id = e.created_by
-      WHERE (e.course_id = ANY($1) OR e.club_id = ANY($2) OR (e.course_id IS NULL AND e.club_id IS NULL))
     `;
-    const params = [cIds.length ? cIds : [0], clIds.length ? clIds : [0]];
+    const params = [];
 
-    if (from) { query += ` AND e.start_time >= $${params.length + 1}`; params.push(from); }
-    if (to)   { query += ` AND e.start_time <= $${params.length + 1}`; params.push(to); }
-    if (type) { query += ` AND e.type = $${params.length + 1}`; params.push(type); }
+    if (course_id) {
+      // Specific course — no membership check needed (header button shows for enrolled users)
+      params.push(course_id);
+      query += ` WHERE e.course_id = $${params.length}`;
+      if (type) { params.push(type); query += ` AND e.type = $${params.length}`; }
+    } else {
+      // General calendar — filter to the user's courses / clubs / global events
+      const courseIds = await pool.query(
+        "SELECT course_id FROM course_members WHERE user_id = $1", [req.user.id]
+      );
+      const clubIds = await pool.query(
+        "SELECT club_id FROM club_members WHERE user_id = $1", [req.user.id]
+      );
+      const cIds  = courseIds.rows.map(r => r.course_id);
+      const clIds = clubIds.rows.map(r => r.club_id);
+      params.push(cIds.length ? cIds : [0], clIds.length ? clIds : [0]);
+      query += ` WHERE (e.course_id = ANY($1) OR e.club_id = ANY($2) OR (e.course_id IS NULL AND e.club_id IS NULL))`;
+      if (from) { params.push(from); query += ` AND e.start_time >= $${params.length}`; }
+      if (to)   { params.push(to);   query += ` AND e.start_time <= $${params.length}`; }
+      if (type) { params.push(type); query += ` AND e.type = $${params.length}`; }
+    }
 
     query += " ORDER BY e.start_time ASC";
-
     const { rows } = await pool.query(query, params);
     res.json(rows);
   } catch (err) {
