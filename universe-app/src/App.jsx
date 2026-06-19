@@ -697,130 +697,306 @@ function HomeDashboard({ onNav }) {
 
 /* ─── CALENDAR ────────────────────────────────────────────────────────────────── */
 const EVENT_TYPE_COLOR = { lecture: C.blue, meeting: C.purple, exam: C.red, deadline: C.orange, club_event: C.green, office_hours: C.cyan };
+const EVENT_TYPE_LABEL = { lecture: "Lecture", meeting: "Meeting", exam: "Exam", deadline: "Deadline", club_event: "Club Event", office_hours: "Office Hours" };
 
 function CalendarView({ triggerCreate = 0 }) {
-  const user = useContext(UserContext);
+  const user    = useContext(UserContext);
   const canEdit = user?.role === "instructor" || user?.role === "admin";
-  const toast = useToast();
-  const [view, setView] = useState("week");
+  const toast   = useToast();
+
+  const [view, setView] = useState("upcoming");
+
+  // Week state
   const [weekStart, setWeekStart] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
   });
-  const [events, setEvents] = useState([]);
-  const [creating, setCreating] = useState(false);
-  const [evTitle, setEvTitle] = useState("");
-  const [evType, setEvType] = useState("lecture");
-  const [evDate, setEvDate] = useState("");
-  const [evTime, setEvTime] = useState("09:00");
+  const [weekEvents, setWeekEvents] = useState([]);
+
+  // Month state
+  const [monthDate, setMonthDate] = useState(() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; });
+  const [monthEvents, setMonthEvents] = useState([]);
+
+  // Upcoming list state
+  const [upcomingEvents, setUpcomingEvents] = useState([]);
+  const [upLoading, setUpLoading] = useState(false);
+
+  // Create event form
+  const [creating,   setCreating]   = useState(false);
+  const [evTitle,    setEvTitle]    = useState("");
+  const [evType,     setEvType]     = useState("lecture");
+  const [evDate,     setEvDate]     = useState("");
+  const [evTime,     setEvTime]     = useState("09:00");
   const [evDuration, setEvDuration] = useState(60);
-  const [evSaving, setEvSaving] = useState(false);
-  const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  const weekDates = days.map((_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d; });
+  const [evSaving,   setEvSaving]   = useState(false);
+
+  const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   const today = new Date(); today.setHours(0,0,0,0);
-  const fmtRange = () => {
-    const end = new Date(weekStart); end.setDate(end.getDate() + 6);
-    const fmt = d => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    return `${fmt(weekStart)} – ${fmt(end)}, ${end.getFullYear()}`;
-  };
-  const prevWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(d); };
-  const nextWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(d); };
-  const goToday  = () => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); setWeekStart(d); };
 
+  // ── Load week events ──────────────────────────────────────────────────
   useEffect(() => {
-    const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
-    api(`/api/events?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}`)
-      .then(d => { if (Array.isArray(d)) setEvents(d); }).catch(() => {});
-  }, [weekStart]);
+    if (view !== "week") return;
+    const to = new Date(weekStart); to.setDate(to.getDate() + 7);
+    api(`/api/events?from=${weekStart.toISOString()}&to=${to.toISOString()}`)
+      .then(d => { if (Array.isArray(d)) setWeekEvents(d); }).catch(() => {});
+  }, [weekStart, view]);
 
-  useEffect(() => { if (triggerCreate > 0) setCreating(true); }, [triggerCreate]);
+  // ── Load month events ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (view !== "month") return;
+    const from = new Date(monthDate); from.setDate(1);
+    const to   = new Date(monthDate); to.setMonth(to.getMonth() + 1); to.setDate(0); to.setHours(23,59,59);
+    api(`/api/events?from=${from.toISOString()}&to=${to.toISOString()}`)
+      .then(d => { if (Array.isArray(d)) setMonthEvents(d); }).catch(() => {});
+  }, [monthDate, view]);
+
+  // ── Load upcoming events (120-day window) ─────────────────────────────
+  const loadUpcoming = () => {
+    setUpLoading(true);
+    const from = new Date(); from.setDate(from.getDate() - 1);
+    const to   = new Date(); to.setDate(to.getDate() + 120);
+    api(`/api/events?from=${from.toISOString()}&to=${to.toISOString()}`)
+      .then(d => { if (Array.isArray(d)) setUpcomingEvents(d); })
+      .catch(() => {})
+      .finally(() => setUpLoading(false));
+  };
+  useEffect(() => { if (view === "upcoming") loadUpcoming(); }, [view]);
 
   useEffect(() => { if (triggerCreate > 0 && canEdit) setCreating(true); }, [triggerCreate]);
 
+  // ── Create event ──────────────────────────────────────────────────────
   const createEvent = async () => {
     if (!evTitle.trim() || !evDate) { toast("Title and date are required", "error"); return; }
     setEvSaving(true);
     try {
       const start = new Date(`${evDate}T${evTime}:00`);
-      const end = new Date(start.getTime() + evDuration * 60000);
-      const res = await api("/api/events", { method: "POST", body: { title: evTitle, type: evType, start_time: start.toISOString(), end_time: end.toISOString() } });
+      const end   = new Date(start.getTime() + evDuration * 60000);
+      const res   = await api("/api/events", { method: "POST", body: { title: evTitle, type: evType, start_time: start.toISOString(), end_time: end.toISOString() } });
       if (res.error) { toast(res.error, "error"); setEvSaving(false); return; }
-      toast(`Event "${evTitle}" added!`, "success");
+      toast(`"${evTitle}" added!`, "success");
       setCreating(false); setEvTitle(""); setEvType("lecture"); setEvDate(""); setEvTime("09:00"); setEvDuration(60);
-      const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
-      api(`/api/events?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}`).then(d => { if (Array.isArray(d)) setEvents(d); }).catch(() => {});
+      if (view === "upcoming") loadUpcoming();
+      else if (view === "week") {
+        const to = new Date(weekStart); to.setDate(to.getDate() + 7);
+        api(`/api/events?from=${weekStart.toISOString()}&to=${to.toISOString()}`).then(d => { if (Array.isArray(d)) setWeekEvents(d); }).catch(() => {});
+      }
     } catch { toast("Failed to create event", "error"); }
     setEvSaving(false);
   };
 
-  const eventsForDay = (date) => events.filter(ev => {
-    const evDate = new Date(ev.start_time);
-    return evDate.toDateString() === date.toDateString();
-  });
+  // ── Month grid helpers ────────────────────────────────────────────────
+  const monthDays = () => {
+    const y = monthDate.getFullYear(), m = monthDate.getMonth();
+    const first = new Date(y, m, 1), last = new Date(y, m + 1, 0);
+    const days = [];
+    for (let i = first.getDay() - 1; i >= 0; i--) { const d = new Date(first); d.setDate(d.getDate() - i - 1); days.push({ date: d, in: false }); }
+    for (let i = 1; i <= last.getDate(); i++) days.push({ date: new Date(y, m, i), in: true });
+    const rem = 7 - (days.length % 7); if (rem < 7) for (let i = 1; i <= rem; i++) { const d = new Date(last); d.setDate(d.getDate() + i); days.push({ date: d, in: false }); }
+    return days;
+  };
+  const evForDay = (arr, date) => arr.filter(ev => new Date(ev.start_time).toDateString() === date.toDateString());
+  const prevMonth = () => { const d = new Date(monthDate); d.setMonth(d.getMonth() - 1); setMonthDate(d); };
+  const nextMonth = () => { const d = new Date(monthDate); d.setMonth(d.getMonth() + 1); setMonthDate(d); };
+  const prevWeek  = () => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(d); };
+  const nextWeek  = () => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(d); };
+  const goToday   = () => {
+    const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); setWeekStart(d);
+    const m = new Date(); m.setDate(1); m.setHours(0,0,0,0); setMonthDate(m);
+  };
 
-  return (
-    <div className="fade-up" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 65px)", overflow: "hidden" }}>
-      {creating && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div className="fade-up" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 28, width: "100%", maxWidth: 460 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Add Calendar Event</div>
-              <button onClick={() => setCreating(false)} style={{ color: C.textMuted, padding: 4 }}><Svg d={["M18 6L6 18","M6 6l12 12"]} size={18} /></button>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 5 }}>Title *</label>
-              <input value={evTitle} onChange={e => setEvTitle(e.target.value)} placeholder="e.g. CS101 Lecture" autoFocus
-                style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13 }}
-                onFocus={e => e.target.style.borderColor = C.purple} onBlur={e => e.target.style.borderColor = C.border} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-              <div>
-                <label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 5 }}>Type</label>
-                <select value={evType} onChange={e => setEvType(e.target.value)} style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13 }}>
-                  {["lecture","meeting","exam","deadline","club_event","office_hours"].map(t => <option key={t} value={t}>{t.replace(/_/g," ")}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 5 }}>Duration (min)</label>
-                <select value={evDuration} onChange={e => setEvDuration(+e.target.value)} style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13 }}>
-                  {[30,60,90,120,180].map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 22 }}>
-              <div>
-                <label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 5 }}>Date *</label>
-                <input type="date" value={evDate} onChange={e => setEvDate(e.target.value)}
-                  style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13 }}
-                  onFocus={e => e.target.style.borderColor = C.purple} onBlur={e => e.target.style.borderColor = C.border} />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 5 }}>Time</label>
-                <input type="time" value={evTime} onChange={e => setEvTime(e.target.value)}
-                  style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13 }}
-                  onFocus={e => e.target.style.borderColor = C.purple} onBlur={e => e.target.style.borderColor = C.border} />
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setCreating(false)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 0", fontSize: 13, fontWeight: 600, color: C.textMuted }}>Cancel</button>
-              <button onClick={createEvent} disabled={evSaving} style={{ flex: 2, background: C.purple, color: "white", borderRadius: 8, padding: "10px 0", fontSize: 13, fontWeight: 700, opacity: evSaving ? 0.7 : 1 }}>{evSaving ? "Saving…" : "Add Event"}</button>
-            </div>
+  // ── Group upcoming events by date label ───────────────────────────────
+  const groupedUpcoming = () => {
+    const groups = {};
+    const nowMs = new Date().setHours(0,0,0,0);
+    upcomingEvents.forEach(ev => {
+      const d = new Date(ev.start_time); d.setHours(0,0,0,0);
+      const diff = Math.round((d.getTime() - nowMs) / 86400000);
+      const label = diff < 0 ? "Yesterday" : diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(ev);
+    });
+    return groups;
+  };
+
+  // ── Shared create-event modal ─────────────────────────────────────────
+  const CreateModal = () => creating ? (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div className="fade-up" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 28, width: "100%", maxWidth: 460 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>Add Calendar Event</div>
+          <button onClick={() => setCreating(false)} style={{ color: C.textMuted, padding: 4 }}><Svg d={["M18 6L6 18","M6 6l12 12"]} size={18} /></button>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 5 }}>Title *</label>
+          <input value={evTitle} onChange={e => setEvTitle(e.target.value)} placeholder="e.g. CS101 Lecture" autoFocus
+            style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13 }}
+            onFocus={e => e.target.style.borderColor = C.purple} onBlur={e => e.target.style.borderColor = C.border} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+          <div>
+            <label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 5 }}>Type</label>
+            <select value={evType} onChange={e => setEvType(e.target.value)} style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13 }}>
+              {["lecture","meeting","exam","deadline","club_event","office_hours"].map(t => <option key={t} value={t}>{t.replace(/_/g," ")}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 5 }}>Duration (min)</label>
+            <select value={evDuration} onChange={e => setEvDuration(+e.target.value)} style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13 }}>
+              {[30,60,90,120,180].map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
           </div>
         </div>
-      )}
-      <div style={{ padding: "12px 20px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-        {["Month", "Week", "Day"].map(v => (
-          <button key={v} onClick={() => setView(v.toLowerCase())}
-            style={{ padding: "6px 14px", borderRadius: 7, background: view === v.toLowerCase() ? C.purple : "transparent", color: view === v.toLowerCase() ? "white" : C.textMuted, fontSize: 13, fontWeight: 500, border: `1px solid ${view === v.toLowerCase() ? C.purple : C.border}`, transition: "all 0.15s" }}>{v}</button>
-        ))}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-          <Svg d="M4 6h16M4 12h16M4 18h7" size={16} stroke={C.textMuted} />
-          {[["Lectures", C.blue], ["Meetings", C.purple], ["Club Events", C.green]].map(([l, c]) => (
-            <span key={l} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, border: `1px solid ${c}`, color: c, fontWeight: 500 }}>{l}</span>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 22 }}>
+          <div>
+            <label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 5 }}>Date *</label>
+            <input type="date" value={evDate} onChange={e => setEvDate(e.target.value)}
+              style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13 }}
+              onFocus={e => e.target.style.borderColor = C.purple} onBlur={e => e.target.style.borderColor = C.border} />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 5 }}>Time</label>
+            <input type="time" value={evTime} onChange={e => setEvTime(e.target.value)}
+              style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13 }}
+              onFocus={e => e.target.style.borderColor = C.purple} onBlur={e => e.target.style.borderColor = C.border} />
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => setCreating(false)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 0", fontSize: 13, fontWeight: 600, color: C.textMuted }}>Cancel</button>
+          <button onClick={createEvent} disabled={evSaving} style={{ flex: 2, background: C.purple, color: "white", borderRadius: 8, padding: "10px 0", fontSize: 13, fontWeight: 700, opacity: evSaving ? 0.7 : 1 }}>{evSaving ? "Saving…" : "Add Event"}</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  // ── Shared toolbar ────────────────────────────────────────────────────
+  const Toolbar = () => (
+    <div style={{ padding: "12px 20px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+      {[["upcoming","Upcoming"],["month","Month"],["week","Week"]].map(([v,l]) => (
+        <button key={v} onClick={() => setView(v)}
+          style={{ padding: "6px 14px", borderRadius: 7, background: view === v ? C.purple : "transparent", color: view === v ? "white" : C.textMuted, fontSize: 13, fontWeight: 500, border: `1px solid ${view === v ? C.purple : C.border}`, transition: "all 0.15s" }}>{l}</button>
+      ))}
+      <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        {Object.entries(EVENT_TYPE_LABEL).map(([k, l]) => {
+          const col = EVENT_TYPE_COLOR[k];
+          return <span key={k} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, border: `1px solid ${col}66`, color: col, fontWeight: 600 }}>{l}</span>;
+        })}
+      </div>
+    </div>
+  );
+
+  // ── UPCOMING LIST VIEW ────────────────────────────────────────────────
+  if (view === "upcoming") {
+    const groups = groupedUpcoming();
+    const keys   = Object.keys(groups);
+    return (
+      <div className="fade-up" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 65px)", overflow: "hidden" }}>
+        <CreateModal />
+        <Toolbar />
+        <div style={{ padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <div style={{ fontSize: 13, color: C.textMuted }}>{upcomingEvents.length} events in the next 120 days</div>
+          {canEdit && <button onClick={() => setCreating(true)} style={{ background: C.purple, color: "white", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><Svg d="M12 5v14M5 12h14" size={12} stroke="white" />Add Event</button>}
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+          {upLoading ? (
+            <div style={{ textAlign: "center", padding: 60, color: C.textMuted, fontSize: 13 }}>Loading events…</div>
+          ) : keys.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 60, color: C.textMuted, fontSize: 13 }}>No upcoming events found.</div>
+          ) : keys.map(label => (
+            <div key={label} style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: label === "Today" ? C.purpleLight : C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                {label === "Today" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.purple, display: "inline-block" }} />}
+                {label}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {groups[label].map(ev => {
+                  const col   = EVENT_TYPE_COLOR[ev.type] || C.blue;
+                  const start = new Date(ev.start_time);
+                  const end   = ev.end_time ? new Date(ev.end_time) : null;
+                  const fmtT  = d => d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+                  const isPast = start < new Date();
+                  return (
+                    <div key={ev.id} style={{ display: "flex", gap: 12, padding: "12px 16px", background: C.card, border: `1px solid ${C.border}`, borderLeft: `4px solid ${col}`, borderRadius: 10, opacity: isPast ? 0.55 : 1, transition: "opacity 0.15s" }}>
+                      <div style={{ minWidth: 52, textAlign: "center" }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: col, lineHeight: 1 }}>{start.getDate()}</div>
+                        <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, textTransform: "uppercase" }}>{start.toLocaleString("en-US",{month:"short"})}</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
+                        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          <span>{fmtT(start)}{end ? ` – ${fmtT(end)}` : ""}</span>
+                          {ev.course_name && <span>{ev.course_code}</span>}
+                          {ev.club_name   && <span>{ev.club_name}</span>}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 10, padding: "3px 9px", borderRadius: 20, background: col + "22", color: col, fontWeight: 700, height: "fit-content", whiteSpace: "nowrap" }}>
+                        {EVENT_TYPE_LABEL[ev.type] || ev.type}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </div>
       </div>
+    );
+  }
+
+  // ── MONTH VIEW ────────────────────────────────────────────────────────
+  if (view === "month") {
+    const days = monthDays();
+    const monthLabel = monthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    return (
+      <div className="fade-up" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 65px)", overflow: "hidden" }}>
+        <CreateModal />
+        <Toolbar />
+        <div style={{ padding: "10px 20px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <button onClick={prevMonth} style={{ color: C.textMuted, padding: 4, borderRadius: 6, border: `1px solid ${C.border}` }}><Svg d="M15 18l-6-6 6-6" size={16} /></button>
+          <span style={{ fontWeight: 700, fontSize: 15, minWidth: 160, textAlign: "center" }}>{monthLabel}</span>
+          <button onClick={nextMonth} style={{ color: C.textMuted, padding: 4, borderRadius: 6, border: `1px solid ${C.border}` }}><Svg d="M9 18l6-6-6-6" size={16} /></button>
+          <button onClick={goToday} style={{ marginLeft: 8, padding: "5px 14px", borderRadius: 7, border: `1px solid ${C.border}`, color: C.text, fontSize: 12, fontWeight: 500 }}>Today</button>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            {canEdit && <button onClick={() => setCreating(true)} style={{ background: C.purple, color: "white", borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><Svg d="M12 5v14M5 12h14" size={12} stroke="white" />Add Event</button>}
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {/* Day-of-week headers */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", borderBottom: `1px solid ${C.border}`, background: C.sidebar }}>
+            {DAYS.map(d => <div key={d} style={{ padding: "8px 0", textAlign: "center", fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{d}</div>)}
+          </div>
+          {/* Calendar grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gridAutoRows: "minmax(90px,1fr)" }}>
+            {days.map(({ date, in: inMonth }, idx) => {
+              const isToday = date.getTime() === today.getTime();
+              const dayEvs  = evForDay(monthEvents, date);
+              return (
+                <div key={idx} style={{ borderRight: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: "6px 8px", background: isToday ? "rgba(124,58,237,0.06)" : "transparent", opacity: inMonth ? 1 : 0.35 }}>
+                  <div style={{ fontSize: 13, fontWeight: isToday ? 800 : 500, color: isToday ? C.purpleLight : C.text, width: 26, height: 26, borderRadius: "50%", background: isToday ? C.purpleBg : "transparent", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>{date.getDate()}</div>
+                  {dayEvs.slice(0,3).map(ev => {
+                    const col = EVENT_TYPE_COLOR[ev.type] || C.blue;
+                    return <div key={ev.id} style={{ fontSize: 10, fontWeight: 600, color: col, background: col + "18", borderRadius: 3, padding: "1px 5px", marginBottom: 2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ev.title}</div>;
+                  })}
+                  {dayEvs.length > 3 && <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>+{dayEvs.length - 3} more</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── WEEK VIEW ─────────────────────────────────────────────────────────
+  const weekDates = DAYS.map((_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d; });
+  const fmtRange  = () => {
+    const end = new Date(weekStart); end.setDate(end.getDate() + 6);
+    return `${weekStart.toLocaleDateString("en-US",{month:"short",day:"numeric"})} – ${end.toLocaleDateString("en-US",{month:"short",day:"numeric"})}, ${end.getFullYear()}`;
+  };
+  return (
+    <div className="fade-up" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 65px)", overflow: "hidden" }}>
+      <CreateModal />
+      <Toolbar />
       <div style={{ flex: 1, overflowY: "auto" }}>
-        <div style={{ padding: "12px 20px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ padding: "10px 20px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.border}` }}>
           <button onClick={prevWeek} style={{ color: C.textMuted, padding: 4, borderRadius: 6, border: `1px solid ${C.border}` }}><Svg d="M15 18l-6-6 6-6" size={16} /></button>
           <span style={{ fontWeight: 600, fontSize: 14 }}>{fmtRange()}</span>
           <button onClick={nextWeek} style={{ color: C.textMuted, padding: 4, borderRadius: 6, border: `1px solid ${C.border}` }}><Svg d="M9 18l6-6-6-6" size={16} /></button>
@@ -829,29 +1005,29 @@ function CalendarView({ triggerCreate = 0 }) {
             {canEdit && <button onClick={() => setCreating(true)} style={{ background: C.purple, color: "white", borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><Svg d="M12 5v14M5 12h14" size={12} stroke="white" />Add Event</button>}
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "64px repeat(7,1fr)", borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ display: "grid", gridTemplateColumns: "54px repeat(7,1fr)", borderBottom: `1px solid ${C.border}` }}>
           <div />
           {weekDates.map((d, i) => {
             const isToday = d.getTime() === today.getTime();
             return (
-              <div key={i} style={{ padding: "10px 0", textAlign: "center", borderLeft: `1px solid ${C.border}`, background: isToday ? "rgba(124,58,237,0.08)" : "transparent" }}>
-                <div style={{ fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>{days[i]}</div>
-                <div style={{ fontSize: 16, fontWeight: isToday ? 700 : 500, color: isToday ? C.purpleLight : C.text, marginTop: 2 }}>{d.getDate()}</div>
+              <div key={i} style={{ padding: "8px 0", textAlign: "center", borderLeft: `1px solid ${C.border}`, background: isToday ? "rgba(124,58,237,0.08)" : "transparent" }}>
+                <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{DAYS[i]}</div>
+                <div style={{ fontSize: 16, fontWeight: isToday ? 800 : 500, color: isToday ? C.purpleLight : C.text, marginTop: 2 }}>{d.getDate()}</div>
               </div>
             );
           })}
         </div>
-        {Array.from({ length: 12 }, (_, i) => i + 7).map(h => (
-          <div key={h} style={{ display: "grid", gridTemplateColumns: "64px repeat(7,1fr)", minHeight: 64, borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ padding: "8px 10px", fontSize: 11, color: C.textDim, textAlign: "right" }}>{String(h).padStart(2,"0")}:00</div>
+        {Array.from({ length: 15 }, (_, i) => i + 7).map(h => (
+          <div key={h} style={{ display: "grid", gridTemplateColumns: "54px repeat(7,1fr)", minHeight: 56, borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ padding: "6px 8px", fontSize: 10, color: C.textDim, textAlign: "right", paddingTop: 8 }}>{String(h).padStart(2,"0")}:00</div>
             {weekDates.map((date, i) => {
               const isToday = date.getTime() === today.getTime();
-              const dayEvts = eventsForDay(date).filter(ev => new Date(ev.start_time).getHours() === h);
+              const dayEvs  = evForDay(weekEvents, date).filter(ev => new Date(ev.start_time).getHours() === h);
               return (
-                <div key={i} style={{ borderLeft: `1px solid ${C.border}`, background: isToday ? "rgba(124,58,237,0.04)" : "transparent", position: "relative", padding: dayEvts.length ? "2px 4px" : 0 }}>
-                  {dayEvts.map(ev => {
+                <div key={i} style={{ borderLeft: `1px solid ${C.border}`, background: isToday ? "rgba(124,58,237,0.03)" : "transparent", padding: dayEvs.length ? "2px 3px" : 0 }}>
+                  {dayEvs.map(ev => {
                     const col = EVENT_TYPE_COLOR[ev.type] || C.blue;
-                    return <div key={ev.id} style={{ background: col + "22", border: `1px solid ${col}44`, borderLeft: `3px solid ${col}`, borderRadius: 4, padding: "2px 5px", fontSize: 10, color: col, fontWeight: 600, marginBottom: 2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ev.title}</div>;
+                    return <div key={ev.id} title={ev.title} style={{ background: col + "22", border: `1px solid ${col}44`, borderLeft: `3px solid ${col}`, borderRadius: 4, padding: "2px 5px", fontSize: 10, color: col, fontWeight: 600, marginBottom: 2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ev.title}</div>;
                   })}
                 </div>
               );

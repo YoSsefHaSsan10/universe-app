@@ -21,11 +21,13 @@ const ALLOWED_ORIGINS = new Set([
   "http://127.0.0.1:5173",
 ].filter(Boolean));
 
+const isDev = process.env.NODE_ENV !== "production";
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow requests with no origin (e.g. mobile apps, Postman, server-to-server)
     if (!origin) return cb(null, true);
     if (ALLOWED_ORIGINS.has(origin)) return cb(null, true);
+    // Allow any localhost/127.0.0.1 port in development
+    if (isDev && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return cb(null, true);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,
