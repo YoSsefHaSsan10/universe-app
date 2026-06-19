@@ -59,7 +59,8 @@ app.use("/api", routes);
 
 // ─── FRONTEND (production only) ───────────────────────────────
 if (process.env.NODE_ENV === "production") {
-  const distPath = path.join(__dirname, "../../universe-app/dist");
+  const distPath = path.join(process.cwd(), "universe-app/dist");
+  console.log("Serving frontend from:", distPath);
   app.use(express.static(distPath));
   app.get(/^\/(?!api|uploads|health).*/, (req, res) => {
     res.sendFile(path.join(distPath, "index.html"));
