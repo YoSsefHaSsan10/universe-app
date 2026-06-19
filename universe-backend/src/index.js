@@ -24,13 +24,31 @@ const ALLOWED_ORIGINS = new Set([
 ].filter(Boolean));
 
 const isDev = process.env.NODE_ENV !== "production";
+
+// In production the frontend is served from the same Express server, so the browser
+// sends Origin: <same-host> for crossorigin module scripts. Allow it automatically.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!isDev && origin) {
+    const selfOrigin = `${req.protocol}://${req.get("host")}`;
+    if (origin === selfOrigin) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      if (req.method === "OPTIONS") return res.sendStatus(204);
+      return next();
+    }
+  }
+  next();
+});
+
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
     if (ALLOWED_ORIGINS.has(origin)) return cb(null, true);
     // Allow any localhost/127.0.0.1 port in development
     if (isDev && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return cb(null, true);
-    cb(new Error(`CORS: origin ${origin} not allowed`));
+    // Don't block — just don't set CORS headers (avoids 500 for unknown origins)
+    cb(null, false);
   },
   credentials: true,
 }));
