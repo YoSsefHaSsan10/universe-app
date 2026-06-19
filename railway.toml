@@ -1,0 +1,10 @@
+[build]
+  builder = "nixpacks"
+  buildCommand = "cd universe-app && npm install && npm run build && cd ../universe-backend && npm install"
+
+[deploy]
+  startCommand = "node universe-backend/src/index.js"
+  healthcheckPath = "/health"
+  healthcheckTimeout = 30
+  restartPolicyType = "on_failure"
+  restartPolicyMaxRetries = 3

@@ -1,0 +1,21 @@
+const express = require("express");
+const router  = express.Router();
+
+router.use("/auth",          require("./auth"));
+router.use("/courses",       require("./courses"));
+router.use("/clubs",         require("./clubs"));
+router.use("/clubs",         require("./clubExt"));
+router.use("/teams",         require("./teams"));
+router.use("/messages",      require("./messages"));
+router.use("/announcements", require("./announcements"));
+router.use("/badges",        require("./badges"));
+router.use("/events",        require("./events"));
+router.use("/tasks",         require("./tasks"));
+router.use("/users",         require("./users"));
+router.use("/ai",            require("./ai"));
+router.use("/push",          require("./push"));
+router.use("/social",        require("./social"));
+router.use("/productivity",  require("./productivity"));
+router.use("/academic",      require("./academic"));
+router.use("/admin",         require("./admin"));
+module.exports = router;

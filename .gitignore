@@ -1,0 +1,46 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Environment — never commit secrets
+.env
+.env.local
+.env.*.local
+universe-backend/.env
+
+# Build output
+universe-app/dist/
+universe-app/dist-ssr/
+
+# Uploads (user-generated files)
+universe-backend/uploads/
+
+# Logs
+*.log
+universe-backend/server.log
+universe-app/vite.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.sw?
+
+# Claude internal
+.claude/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Misc files that shouldn't be in the repo
+*.xlsx
+*.msi
+UniVerse.jsx
+launch.json
+settings.local.json
