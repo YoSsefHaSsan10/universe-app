@@ -51,16 +51,15 @@ app.use(express.urlencoded({ extended: true }));
 // ─── HEALTH CHECK ────────────────────────────────────────────
 app.get("/health", (req, res) => {
   const fs = require("fs");
-  const cwd = process.cwd();
-  const d1 = path.join(__dirname, "../../universe-app/dist");
-  const d2 = path.join(cwd, "universe-app/dist");
+  const distPath = path.join(process.cwd(), "universe-app/dist");
+  let files = [];
+  try { files = fs.readdirSync(path.join(distPath, "assets")); } catch(e) { files = [e.message]; }
   res.json({
     status: "ok",
-    cwd,
-    __dirname,
-    d1_exists: fs.existsSync(d1),
-    d2_exists: fs.existsSync(d2),
-    d1, d2,
+    distPath,
+    dist_exists: fs.existsSync(distPath),
+    assets: files,
+    NODE_ENV: process.env.NODE_ENV,
   });
 });
 
