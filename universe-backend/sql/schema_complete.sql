@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS club_members (
   club_id   INT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   user_id   INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role      VARCHAR(20) DEFAULT 'member',
+  status    VARCHAR(20) DEFAULT 'approved',
   joined_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (club_id, user_id)
 );
