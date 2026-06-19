@@ -35,11 +35,13 @@ app.use(cors({
   credentials: true,
 }));
 
-// Rate limit: relaxed in dev, strict in prod
+// Rate limit — skip health checks; trust Railway's proxy for real client IPs
+app.set("trust proxy", 1);
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max:      process.env.NODE_ENV === "production" ? 100 : 1000,
-  message:  { error: "Too many requests, please try again later." },
+  max: 500,
+  skip: (req) => req.path === "/health",
+  message: { error: "Too many requests, please try again later." },
 }));
 
 // ─── BODY PARSING ────────────────────────────────────────────
