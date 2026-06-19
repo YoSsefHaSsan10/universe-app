@@ -4533,22 +4533,47 @@ function AdminAIView() {
       {/* SETUP GUIDE TAB */}
       {tab === "setup" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {[
-            { step: "1", title: "Install Ollama", desc: "Download and install Ollama for Windows from:", link: "https://ollama.com/download" },
-            { step: "2", title: "Download the AI models", desc: "After installation, open a terminal and run:", code: "ollama pull llama3.2:3b\nollama pull nomic-embed-text" },
-            { step: "3", title: "Create the UniVerse AI model", desc: "In the backend folder, run:", code: `cd C:\\universe-app\\universe-backend\nollama create universe-ai -f UniVerseAI.Modelfile` },
-            { step: "4", title: "Start Ollama", desc: "Ollama should start automatically. If not, run:", code: "ollama serve" },
-            { step: "5", title: "Index your documents (RAG)", desc: "Come back to this panel and click 'Re-index All Documents' to embed your course materials and announcements into the AI's knowledge." },
-          ].map(s => (
-            <div key={s.step} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, display: "flex", gap: 16 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: C.purpleBg, border: `1px solid ${C.purple}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: C.purpleLight, flexShrink: 0 }}>{s.step}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{s.title}</div>
-                <div style={{ fontSize: 13, color: C.textMuted, marginBottom: s.code?8:0 }}>{s.desc} {s.link && <a href={s.link} target="_blank" rel="noreferrer" style={{ color: C.blue }}>{s.link}</a>}</div>
-                {s.code && <pre style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, fontFamily: "monospace", color: C.green, margin: 0 }}>{s.code}</pre>}
+          {/* Groq section (deployed / cloud) */}
+          <div style={{ background: C.card, border: `1px solid ${C.purple}`, borderRadius: 12, padding: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: C.purpleLight, marginBottom: 6 }}>☁️ Groq Cloud AI — Active on Railway</div>
+            <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 10 }}>Groq is already configured and running as the AI engine on the deployed app. No setup required.</div>
+            {[
+              { step: "1", title: "Get a free Groq API key", desc: "Sign up at console.groq.com → API Keys → Create Key (copy the gsk_... key)", link: "https://console.groq.com" },
+              { step: "2", title: "Add to Railway environment", desc: "Railway dashboard → your service → Variables → add:", code: "GROQ_API_KEY = gsk_...\nGROQ_MODEL   = llama-3.1-8b-instant" },
+              { step: "3", title: "Done — AI is live", desc: "Railway restarts automatically. The AI chat will use Groq with your student's real-time course data, tasks, and events." },
+            ].map(s => (
+              <div key={s.step} style={{ display: "flex", gap: 14, marginBottom: 12 }}>
+                <div style={{ width: 26, height: 26, borderRadius: 6, background: C.purpleBg, border: `1px solid ${C.purple}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: C.purpleLight, flexShrink: 0, fontSize: 12 }}>{s.step}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3 }}>{s.title}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginBottom: s.code ? 6 : 0 }}>{s.desc} {s.link && <a href={s.link} target="_blank" rel="noreferrer" style={{ color: C.blue }}>{s.link}</a>}</div>
+                  {s.code && <pre style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, fontFamily: "monospace", color: C.green, margin: 0 }}>{s.code}</pre>}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+
+          {/* Ollama section (local dev only) */}
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: C.textMuted, marginBottom: 6 }}>🖥️ Ollama — Local Development Only</div>
+            <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 10 }}>Use Ollama when running the app locally on your machine. It also enables RAG document indexing.</div>
+            {[
+              { step: "1", title: "Install Ollama", desc: "Download and install from:", link: "https://ollama.com/download" },
+              { step: "2", title: "Download the AI models", desc: "Open a terminal and run:", code: "ollama pull llama3.2:3b\nollama pull nomic-embed-text" },
+              { step: "3", title: "Create the UniVerse model", desc: "In the backend folder, run:", code: `cd universe-backend\nollama create universe-ai -f UniVerseAI.Modelfile` },
+              { step: "4", title: "Start Ollama", desc: "Ollama starts automatically on boot. To start manually:", code: "ollama serve" },
+              { step: "5", title: "Index documents (RAG)", desc: "Click 'Re-index All Documents' on the Status tab to embed course materials into the AI's knowledge base." },
+            ].map(s => (
+              <div key={s.step} style={{ display: "flex", gap: 14, marginBottom: 12 }}>
+                <div style={{ width: 26, height: 26, borderRadius: 6, background: "#1f2937", border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: C.textMuted, flexShrink: 0, fontSize: 12 }}>{s.step}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3 }}>{s.title}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginBottom: s.code ? 6 : 0 }}>{s.desc} {s.link && <a href={s.link} target="_blank" rel="noreferrer" style={{ color: C.blue }}>{s.link}</a>}</div>
+                  {s.code && <pre style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, fontFamily: "monospace", color: C.green, margin: 0 }}>{s.code}</pre>}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
