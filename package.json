@@ -6,7 +6,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "cd universe-app && npm install && npm run build && cd ../universe-backend && npm install",
+    "build": "cd universe-app && npm install --include=dev && npm run build && cd ../universe-backend && npm install --omit=dev",
     "start": "node universe-backend/src/index.js"
   }
 }
