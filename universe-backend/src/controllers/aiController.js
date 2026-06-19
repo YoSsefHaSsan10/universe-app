@@ -48,13 +48,13 @@ async function getUserContext(userId) {
         [userId]
       ),
 
-      // Recent announcements (enrolled courses + system-wide)
+      // Recent announcements (enrolled courses + university-wide)
       pool.query(`
-        SELECT a.title, a.content, c.name AS course_name
+        SELECT a.title, a.body AS content, c.name AS course_name
         FROM announcements a
         LEFT JOIN courses c ON c.id = a.course_id
         WHERE a.course_id IN (SELECT course_id FROM course_members WHERE user_id = $1)
-           OR a.scope = 'system'
+           OR a.course_id IS NULL
         ORDER BY a.created_at DESC LIMIT 5
       `, [userId]),
     ]);
